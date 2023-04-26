@@ -356,5 +356,5 @@ spark-warehouse/
 # For SBT
 .jvmopts
 
-
 # End of https://www.toptal.com/developers/gitignore/api/python,pycharm+all,spark
+imdb-data/
