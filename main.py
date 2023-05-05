@@ -58,10 +58,13 @@ def main():
     title_principals_schema = t.StructType([t.StructField('tconst', t.StringType(), False),
                                          t.StructField('ordering', t.IntegerType(), False),
                                          t.StructField('nconst', t.StringType(), True),
+                                         t.StructField('category', t.StringType(), True),
                                          t.StructField('job', t.StringType(), True),
-                                            t.StructField('characters', t.StringType(), True)])
+                                         t.StructField('characters', t.StringType(), True)])
+
     path_principals = r'imdb-data\title.principals.tsv.gz'
     title_principals_df = spark_session.read.csv(path_principals, sep=r'\t', header=True, nullValue='null', schema=title_principals_schema)
+
     title_principals_df.show()
     title_principals_df.printSchema()
     title_ratings_schema = t.StructType([t.StructField('tconst', t.StringType(), False),
@@ -87,11 +90,16 @@ def main():
     title_basics_df.printSchema()
     df_2_hours = title_basics_df.filter(col("runtimeMinutes") > 120)
     df_2_hours.show()
-    joined =title_akas_df.join(name_basics_df, title_akas_df.id1 == df2.id2, "inner") \
-        .join(df3, df1.id1 == df3.id3, "inner")
-    joined = title_akas_df.join(name_basics_df, title_akas_df.titleId == title_principals_df.tconst)
-    result = joined.select("primaryName", "title","characters")
-    result.show()
+    df_2_hours.write.mode('overwrite').csv("results")
+
+    #allowed_title_types = ["movie", "tvSeries", "tvMovie", "tvMiniSeries"]
+    #title_basics_df_movies = title_basics_df.filter(col('titleType').isin(allowed_title_types))
+    #joined_df = title_basics_df_movies.join(title_principals_df, on='tconst', how='inner')
+    #character_df = joined_df.filter(col('job').isNotNull())
+    #result_df = character_df.join(name_basics_df, on='nconst', how='inner')
+    #result_df.select('primaryName', 'primaryTitle', 'characters').show()
+    #result_df.select('primaryName', 'primaryTitle', 'characters').csv("result.csv", header=True)
+
 
 if __name__ == '__main__':
 
