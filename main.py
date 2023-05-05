@@ -1,7 +1,17 @@
+import sys
+import csv
+from pyspark.sql import SQLContext
 from pyspark import SparkConf
-from pyspark.sql import SparkSession
+from pyspark import SparkContext
+from pyspark.sql import SparkSession, functions as F
 import pyspark.sql.types as t
-from pyspark.sql.functions import col
+import py4j
+from pyspark.sql import readwriter
+from pyspark.sql import Window, types
+from pyspark.sql.functions import floor
+from pyspark.sql.functions import col, count, desc, dense_rank, explode, split, collect_list, expr
+from pyspark.sql.functions import collect_list, struct, desc
+from pyspark.sql.types import *
 
 
 def main():
@@ -88,11 +98,44 @@ def main():
     title_basics_df = spark_session.read.csv(path_title_basics, sep=r'\t', header=True, nullValue='null', schema=title_basics_schema)
     title_basics_df.show()
     title_basics_df.printSchema()
-    df_2_hours = title_basics_df.filter(col("runtimeMinutes") > 120)
-    df_2_hours.show()
-    df_2_hours.write.mode('overwrite').csv("results")
 
-    #allowed_title_types = ["movie", "tvSeries", "tvMovie", "tvMiniSeries"]
+    joined_df = title_basics_df.join(title_ratings_df, 'tconst')
+    grouped_df = joined_df.groupBy('genres').agg(F.avg('averageRating').alias('avg_rating'),
+                                                 F.sum('numVotes').alias('total_votes')).orderBy(F.desc('avg_rating'),
+                                                                                                 F.desc('total_votes'))
+    w = Window.partitionBy('genres').orderBy(F.desc('avg_rating'), F.desc('total_votes'))
+    ranked_df = grouped_df.select('genres', 'avg_rating', 'total_votes', F.row_number().over(w).alias('rank'))
+    top_10_df = ranked_df.filter('rank <= 10')
+    top_10_df.show()
+    #top_10_df.write.csv(path="results1", mode="overwrite")
+    top_10_df.write.format("csv").mode("overwrite").save("/default-csv")
+
+    #title_basics_df = title_basics_df.withColumn('decade', floor(title_basics_df.startYear / 10) * 10)
+    #joined_df = title_basics_df.join(title_ratings_df, 'tconst', 'left')
+    #grouped_df = joined_df.groupBy('decade', 'primaryTitle').agg({'averageRating': 'mean', 'numVotes': 'sum'})
+    #sorted_df = grouped_df.sort(['decade', 'avg(averageRating)'], ascending=[1, 0])
+   # w = Window.partitionBy('decade').orderBy(grouped_df['avg(averageRating)'].desc())
+    #ranked_df = sorted_df.withColumn('rank', dense_rank().over(w))
+    #result_df = ranked_df.filter(ranked_df['rank'] <= 10)
+    #result_df.show()
+    #df_2_hours = title_basics_df.filter(col("runtimeMinutes") > 120)
+    #df_2_hours.show()
+    #tv_series_df = title_basics_df.join(title_episode_df, title_basics_df['tconst'] == title_episode_df['parentTconst'])
+    #tv_series_df.show()
+    #episode_count_df = tv_series_df.groupBy('parentTconst').count()
+    #episode_count_df.show()
+    #top_episodes_df = episode_count_df.orderBy(desc('count')).limit(50)
+    #top_episodes_df.show()
+    #adult_titles_df = title_basics_df.join(title_akas_df, title_basics_df.tconst == title_akas_df.titleId, 'inner') \
+        #.filter(title_basics_df.isAdult == '1') \
+        #.groupBy(title_akas_df.region) \
+        #.agg(count('*').alias('count'))
+    #top_100_adult_regions_df = adult_titles_df.orderBy(adult_titles_df['count'].desc()).limit(100)
+    #top_100_adult_regions_df.show()
+
+    #df_2_hours.write.mode('overwrite').csv("results")
+
+   # allowed_title_types = ["movie", "tvSeries", "tvMovie", "tvMiniSeries"]
     #title_basics_df_movies = title_basics_df.filter(col('titleType').isin(allowed_title_types))
     #joined_df = title_basics_df_movies.join(title_principals_df, on='tconst', how='inner')
     #character_df = joined_df.filter(col('job').isNotNull())
