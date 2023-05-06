@@ -35,8 +35,7 @@ def main():
     title_akas_df.show()
     title_akas_df.printSchema()
 
-    df_ukr = title_akas_df.filter(col("region") == "UA")
-    df_ukr.show()
+
 
     title_crew_schema = t.StructType([t.StructField('tconst', t.StringType(), False),
                                       t.StructField('directors', t.StringType(), False),
@@ -55,8 +54,7 @@ def main():
     name_basics_df = spark_session.read.csv(path_name_basics, sep=r'\t', header=True, nullValue='null', schema=name_basics_schema)
     name_basics_df.show()
     name_basics_df.printSchema()
-    df_19th_century = name_basics_df.filter(col("birthYear") >= 1800).filter(col("birthYear") < 1900)
-    df_19th_century.show()
+
     title_episode_schema = t.StructType([t.StructField('tconst', t.StringType(), False),
                                       t.StructField('parentTconst', t.StringType(), False),
                                       t.StructField('seasonNumber', t.IntegerType(), True),
@@ -99,49 +97,77 @@ def main():
     title_basics_df.show()
     title_basics_df.printSchema()
 
+
+    #task1
+    df_ukr = title_akas_df.filter(col("region") == "UA")
+    df_ukr.show()
+    path_to_save1 = 'imdb-data/results/task1'
+    df_ukr.write.csv(path_to_save1, header=True, mode="overwrite")
+    #task2
+    df_19th_century = name_basics_df.filter(col("birthYear") >= 1800).filter(col("birthYear") < 1900)
+    df_19th_century.show()
+    path_to_save2 = 'imdb-data/results/task2'
+    df_19th_century.write.csv(path_to_save2, header=True, mode="overwrite")
+    #task3
+    df_2_hours = title_basics_df.filter(col("runtimeMinutes") > 120)
+    df_2_hours.show()
+    path_to_save3 = 'imdb-data/results/task3'
+    df_2_hours.write.csv(path_to_save3, header=True, mode="overwrite")
+    #task4
+    allowed_title_types = ["movie", "tvSeries", "tvMovie", "tvMiniSeries"]
+    title_basics_df_movies = title_basics_df.filter(col('titleType').isin(allowed_title_types))
+    joined_df = title_basics_df_movies.join(title_principals_df, on='tconst', how='inner')
+    character_df = joined_df.filter(col('job').isNotNull())
+    result_df = character_df.join(name_basics_df, on='nconst', how='inner')
+    result_df.select('primaryName', 'primaryTitle', 'characters').show()
+    path_to_save4 = 'imdb-data/results/task4'
+    result_df.select('primaryName', 'primaryTitle', 'characters').write.csv(path_to_save4,header=True, mode="overwrite")
+    #task5
+    adult_titles_df = title_basics_df.join(title_akas_df, title_basics_df.tconst == title_akas_df.titleId, 'inner') \
+        .filter(title_basics_df.isAdult == '1') \
+        .groupBy(title_akas_df.region) \
+        .agg(count('*').alias('count'))
+    top_100_adult_regions_df = adult_titles_df.orderBy(adult_titles_df['count'].desc()).limit(100)
+    top_100_adult_regions_df.show()
+    path_to_save5 = 'imdb-data/results/task5'
+    top_100_adult_regions_df.write.csv(path_to_save5, header=True, mode="overwrite")
+    # task6
+    tv_series_df = title_basics_df.join(title_episode_df, title_basics_df['tconst'] == title_episode_df['parentTconst'])
+    tv_series_df.show()
+    episode_count_df = tv_series_df.groupBy('parentTconst').count()
+    episode_count_df.show()
+    top_episodes_df = episode_count_df.orderBy(desc('count')).limit(50)
+    top_episodes_df.show()
+    path_to_save6 = 'imdb-data/results/task6'
+    top_episodes_df.write.csv(path_to_save6, header=True, mode="overwrite")
+    # task7
+    title_basics_df = title_basics_df.withColumn('decade', floor(title_basics_df.startYear / 10) * 10)
+    joined_df = title_basics_df.join(title_ratings_df, 'tconst', 'left')
+    grouped_df = joined_df.groupBy('decade', 'primaryTitle').agg({'averageRating': 'mean', 'numVotes': 'sum'})
+    sorted_df = grouped_df.sort(['decade', 'avg(averageRating)'], ascending=[1, 0])
+    w = Window.partitionBy('decade').orderBy(grouped_df['avg(averageRating)'].desc())
+    ranked_df = sorted_df.withColumn('rank', dense_rank().over(w))
+    result_df = ranked_df.filter(ranked_df['rank'] <= 10)
+    result_df.show()
+    path_to_save7 = 'imdb-data/results/task7'
+    result_df.write.csv(path_to_save7, header=True, mode="overwrite")
+    # task8
     joined_df = title_basics_df.join(title_ratings_df, 'tconst')
     grouped_df = joined_df.groupBy('genres').agg(F.avg('averageRating').alias('avg_rating'),
-                                                 F.sum('numVotes').alias('total_votes')).orderBy(F.desc('avg_rating'),
-                                                                                                 F.desc('total_votes'))
+                                               F.sum('numVotes').alias('total_votes')).orderBy(F.desc('avg_rating'),
+                                                                                               F.desc('total_votes'))
     w = Window.partitionBy('genres').orderBy(F.desc('avg_rating'), F.desc('total_votes'))
     ranked_df = grouped_df.select('genres', 'avg_rating', 'total_votes', F.row_number().over(w).alias('rank'))
     top_10_df = ranked_df.filter('rank <= 10')
     top_10_df.show()
-    #top_10_df.write.csv(path="results1", mode="overwrite")
-    top_10_df.write.format("csv").mode("overwrite").save("/default-csv")
+    path_to_save8 = 'imdb-data/results/task8'
+    top_10_df.write.csv(path_to_save8, header=True, mode="overwrite")
 
-    #title_basics_df = title_basics_df.withColumn('decade', floor(title_basics_df.startYear / 10) * 10)
-    #joined_df = title_basics_df.join(title_ratings_df, 'tconst', 'left')
-    #grouped_df = joined_df.groupBy('decade', 'primaryTitle').agg({'averageRating': 'mean', 'numVotes': 'sum'})
-    #sorted_df = grouped_df.sort(['decade', 'avg(averageRating)'], ascending=[1, 0])
-   # w = Window.partitionBy('decade').orderBy(grouped_df['avg(averageRating)'].desc())
-    #ranked_df = sorted_df.withColumn('rank', dense_rank().over(w))
-    #result_df = ranked_df.filter(ranked_df['rank'] <= 10)
-    #result_df.show()
-    #df_2_hours = title_basics_df.filter(col("runtimeMinutes") > 120)
-    #df_2_hours.show()
-    #tv_series_df = title_basics_df.join(title_episode_df, title_basics_df['tconst'] == title_episode_df['parentTconst'])
-    #tv_series_df.show()
-    #episode_count_df = tv_series_df.groupBy('parentTconst').count()
-    #episode_count_df.show()
-    #top_episodes_df = episode_count_df.orderBy(desc('count')).limit(50)
-    #top_episodes_df.show()
-    #adult_titles_df = title_basics_df.join(title_akas_df, title_basics_df.tconst == title_akas_df.titleId, 'inner') \
-        #.filter(title_basics_df.isAdult == '1') \
-        #.groupBy(title_akas_df.region) \
-        #.agg(count('*').alias('count'))
-    #top_100_adult_regions_df = adult_titles_df.orderBy(adult_titles_df['count'].desc()).limit(100)
-    #top_100_adult_regions_df.show()
 
-    #df_2_hours.write.mode('overwrite').csv("results")
 
-   # allowed_title_types = ["movie", "tvSeries", "tvMovie", "tvMiniSeries"]
-    #title_basics_df_movies = title_basics_df.filter(col('titleType').isin(allowed_title_types))
-    #joined_df = title_basics_df_movies.join(title_principals_df, on='tconst', how='inner')
-    #character_df = joined_df.filter(col('job').isNotNull())
-    #result_df = character_df.join(name_basics_df, on='nconst', how='inner')
-    #result_df.select('primaryName', 'primaryTitle', 'characters').show()
-    #result_df.select('primaryName', 'primaryTitle', 'characters').csv("result.csv", header=True)
+
+
+
 
 
 if __name__ == '__main__':
